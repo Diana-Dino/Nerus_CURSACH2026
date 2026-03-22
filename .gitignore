@@ -1,0 +1,24 @@
+# === Visual Studio ===
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# === Результаты сборки ===
+[Bb]in/
+[Oo]bj/
+*.dll
+*.exe
+*.pdb
+*.exe.config
+
+# === Пользовательские настройки ===
+*.rsuser
+*.suo
+*.user
+
+# === Тестовые/временные файлы ===
+*.log
+*.tmp
+*.temp

@@ -13,11 +13,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Ди\\source\\repos\\KursT1\\KursT1\\KursT1.csproj",
+      "projectUniqueName": "C:\\Users\\Ди\\Documents\\GitHub\\Nerus_CURSACH2026\\KursT1\\KursT1.csproj",
       "projectName": "KursT1",
-      "projectPath": "C:\\Users\\Ди\\source\\repos\\KursT1\\KursT1\\KursT1.csproj",
+      "projectPath": "C:\\Users\\Ди\\Documents\\GitHub\\Nerus_CURSACH2026\\KursT1\\KursT1.csproj",
       "packagesPath": "C:\\Users\\Ди\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Ди\\source\\repos\\KursT1\\KursT1\\obj\\",
+      "outputPath": "C:\\Users\\Ди\\Documents\\GitHub\\Nerus_CURSACH2026\\KursT1\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Ди\\AppData\\Roaming\\NuGet\\NuGet.Config",
