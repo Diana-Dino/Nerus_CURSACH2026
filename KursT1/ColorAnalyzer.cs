@@ -1,220 +1,207 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace KursT1
 {
-    // Результат анализа цвета в сегменте
+    /// <summary>
+    /// Результат анализа цвета в одном сегменте
+    /// </summary>
     public class SegmentColorResult
     {
         public int SegmentId { get; set; }
         public string SegmentName { get; set; }
-        public Dictionary<string, int> ColorCounts { get; set; } = new Dictionary<string, int>();
-        public Dictionary<string, double> ColorPercentages { get; set; } = new Dictionary<string, double>();
         public int TotalPixels { get; set; }
 
-        // Доминирующий цвет
-        public string DominantColor { get; set; }
-        public double DominantPercentage { get; set; }
+        // Кластеризация
+        public Dictionary<int, int> ClusterCounts { get; set; } = new Dictionary<int, int>();
+        public Dictionary<int, double> ClusterPercentages { get; set; } = new Dictionary<int, double>();
+        public int DominantClusterId { get; set; }
+        public string DominantClusterColorRGB { get; set; }
+        public double DominantClusterPercentage { get; set; }
 
-        // Для отображения в таблице
-        public string DominantColorWithPercent => $"{DominantColor} ({DominantPercentage:F1}%)";
-        
-        // Остальные цвета с процентами
-        public string OtherColorsText
+        // Интерпретация из реестра
+        public string DominantClusterName { get; set; }
+        public string DominantColorWithPercent => $"{DominantClusterColorRGB} ({DominantClusterPercentage:F1}%)";
+    }
+
+    /// <summary>
+    /// Полный результат анализа рисунка
+    /// </summary>
+    public class DrawingAnalysisResult
+    {
+        public List<SegmentColorResult> Segments { get; set; } = new List<SegmentColorResult>();
+        public ClusteringResult ClusteringResult { get; set; }
+        public string ErrorMessage { get; set; }
+        public bool IsSuccess => string.IsNullOrEmpty(ErrorMessage);
+    }
+
+    /// <summary>
+    /// Анализатор рисунка пользователя
+    /// </summary>
+    public class ColorAnalyzer
+    {
+        private readonly TemplateAnalysisResult _template;
+        private readonly IClusteringAlgorithm _clusteringAlgorithm;
+
+        /// <summary>
+        /// Конструктор анализатора
+        /// </summary>
+        public ColorAnalyzer(TemplateAnalysisResult template, IClusteringAlgorithm clusteringAlgorithm)
         {
-            get
-            {
-                // Список для результатов
-                var otherColors = new List<string>();
-
-                // Перебираем названия цветов через .Keys
-                foreach (string colorName in ColorPercentages.Keys)
-                {
-                    // Получаем процент по ключу
-                    double percent = ColorPercentages[colorName];
-
-                    // Пропускаем доминирующий цвет и неопределенные значения
-                    if (colorName == DominantColor)
-                        continue;
-                    if (colorName == "Неопределённый")
-                        continue;
-                    if (percent == 0)
-                        continue;
-
-                    // Добавляем в список в формате "Цвет: 20.5%"
-                    otherColors.Add($"{colorName}: {percent:F1}%");
-                }
-
-                // Сортируем по убыванию процента (LINQ)
-                otherColors = otherColors
-                    .OrderByDescending(text =>
-                    {
-                        // Извлекаем число из строки "Цвет: 20.5%"
-                        var parts = text.Split(':');
-                        if (parts.Length == 2 && double.TryParse(parts[1].Trim().Replace("%", ""), out double value))
-                            return value;
-                        return 0;
-                    })
-                    .ToList();
-
-                // Добавляем "Неопределённый" если есть в конец
-                if (ColorPercentages.ContainsKey("Неопределённый"))
-                {
-                    double undefinedPercent = ColorPercentages["Неопределённый"];
-                    if (undefinedPercent > 0)
-                    {
-                        otherColors.Add($"Неопр.: {undefinedPercent:F1}%");
-                    }
-                }
-
-                // Возвращаем строку через запятую или "—" если пусто
-                return otherColors.Count > 0 ? string.Join(", ", otherColors) : "—";
-            }
-        }        // Цвет для отображения квадратика
-        public Color DominantColorRgb
-        {
-            get
-            {
-                // switch expression = switch-case, но короче и современнее
-                return DominantColor switch
-                {
-                    "Красный" => Colors.Red,
-                    "Зеленый" => Colors.Green,
-                    "Желтый" => Colors.Yellow,
-                    "Синий" => Colors.Blue,
-                    "Голубой" => Colors.Cyan,
-                    "Фиолетовый" => Colors.Purple,
-                    "Коричневый" => Color.FromRgb(160, 80, 30),
-                    "Оранжевый" => Color.FromRgb(255, 120, 0),
-                    "Серый" => Colors.Gray,
-                    "Розовый" => Color.FromRgb(255, 100, 200),
-                    _ => Colors.LightGray // по умолчанию
-                };
-            }
-        }
-
-        // Полный результат анализа рисунка
-        public class DrawingAnalysisResult
-        {
-            public List<SegmentColorResult> Segments { get; set; } = new List<SegmentColorResult>();
-            public string ErrorMessage { get; set; }
-            public bool IsSuccess => string.IsNullOrEmpty(ErrorMessage);
+            _template = template;
+            _clusteringAlgorithm = clusteringAlgorithm;
         }
 
 
-        // Анализатор рисунка пользователя
-        public class ColorAnalyzer
+
+        /// <summary>
+        /// Проанализировать рисунок пользователя
+        /// </summary>
+        public DrawingAnalysisResult AnalyzeDrawing(string filePath)
         {
-            private readonly TemplateAnalysisResult _template;
+            var result = new DrawingAnalysisResult();
 
-            public ColorAnalyzer(TemplateAnalysisResult template)
+            try
             {
-                _template = template;
-            }
+                // 1. Загрузка изображения
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(filePath);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
 
-            public DrawingAnalysisResult AnalyzeDrawing(string filePath)
-            {
-                var result = new DrawingAnalysisResult();
+                // 2. Конвертация в BGR24
+                var convertedBitmap = new FormatConvertedBitmap(
+                    bitmap,
+                    PixelFormats.Bgr24,
+                    null,
+                    0);
 
-                try
+                int width = convertedBitmap.PixelWidth;
+                int height = convertedBitmap.PixelHeight;
+
+                // 3. Проверка размера
+                if (width != _template.Width || height != _template.Height)
                 {
-                    // 1. Загружаем рисунок пользователя
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(filePath);
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.EndInit();
-                    bitmap.Freeze();
+                    result.ErrorMessage = $"Размер рисунка ({width}x{height}) не совпадает с шаблоном ({_template.Width}x{_template.Height})";
+                    return result;
+                }
 
-                    // 2. Конвертируем в BGR24
-                    var convertedBitmap = new FormatConvertedBitmap(
-                        bitmap,
-                        PixelFormats.Bgr24,
-                        null,
-                        0);
+                // 4. Чтение пикселей
+                int stride = width * 3;
+                byte[] pixels = new byte[height * stride];
+                convertedBitmap.CopyPixels(pixels, stride, 0);
 
-                    int width = convertedBitmap.PixelWidth;
-                    int height = convertedBitmap.PixelHeight;
+                // 5. Кластеризация (ГЛАВНЫЙ АНАЛИЗ!)
+                result.ClusteringResult = _clusteringAlgorithm.Cluster(pixels, width, height);
 
-                    // 3. Проверяем размер
-                    if (width != _template.Width || height != _template.Height)
+                if (!result.ClusteringResult.IsSuccess)
+                {
+                    result.ErrorMessage = result.ClusteringResult.ErrorMessage;
+                    return result;
+                }
+
+                // 6. Анализ по сегментам
+                foreach (var segment in _template.Segments)
+                {
+                    var segmentResult = new SegmentColorResult
                     {
-                        result.ErrorMessage = $"Размер рисунка ({width}x{height}) не совпадает с шаблоном ({_template.Width}x{_template.Height})";
-                        return result;
+                        SegmentId = segment.Id,
+                        SegmentName = segment.Name
+                    };
+
+                    // Инициализируем счётчики
+                    foreach (var cluster in result.ClusteringResult.Clusters)
+                    {
+                        segmentResult.ClusterCounts[cluster.Id] = 0;
                     }
 
-                    // 4. Читаем пиксели рисунка
-                    int stride = width * 3;
-                    byte[] pixels = new byte[height * stride];
-                    convertedBitmap.CopyPixels(pixels, stride, 0);
-
-                    // 5. Для каждого сегмента анализируем цвета
-                    foreach (var segment in _template.Segments)
+                    // Считаем пиксели по кластерам
+                    foreach (var pixel in segment.Pixels)
                     {
-                        var segmentResult = new SegmentColorResult
-                        {
-                            SegmentId = segment.Id,
-                            SegmentName = segment.Name
-                        };
+                        int x = (int)pixel.X;
+                        int y = (int)pixel.Y;
 
-                        // Инициализируем счётчики для всех цветов (явный доступ по ключу)
-                        foreach (string colorName in ColorRegistry.Colors.Select(c => c.Name))
+                        var clusterPixel = FindClusterPixel(result.ClusteringResult.Clusters, x, y);
+
+                        if (clusterPixel != null)
                         {
-                            segmentResult.ColorCounts[colorName] = 0;
+                            segmentResult.ClusterCounts[clusterPixel.ClusterId]++;
                         }
-                        segmentResult.ColorCounts["Неопределённый"] = 0;
+                    }
 
-                        // Считаем цвета в пикселях этого сегмента
-                        foreach (var pixel in segment.Pixels)
+                    segmentResult.TotalPixels = segment.Pixels.Count;
+
+                    // 7. Вычисление процентов
+                    if (segmentResult.TotalPixels > 0)
+                    {
+                        int dominantClusterId = -1;
+                        double maxPercentage = 0;
+
+                        foreach (int clusterId in segmentResult.ClusterCounts.Keys)
                         {
-                            int x = (int)pixel.X;
-                            int y = (int)pixel.Y;
-                            int index = (y * stride) + (x * 3);
+                            int count = segmentResult.ClusterCounts[clusterId];
+                            double percentage = (double)count / segmentResult.TotalPixels * 100;
+                            segmentResult.ClusterPercentages[clusterId] = Math.Round(percentage, 1);
 
-                            byte b = pixels[index];
-                            byte g = pixels[index + 1];
-                            byte r = pixels[index + 2];
-
-                            var closestColor = ColorRegistry.FindClosestColorWithThreshold(r, g, b, 100);
-                            segmentResult.ColorCounts[closestColor.Name]++;
-                        }
-
-                        segmentResult.TotalPixels = segment.Pixels.Count;
-
-                        // Вычисляем проценты (ваш стиль: .Keys + явный доступ)
-                        if (segmentResult.TotalPixels > 0)
-                        {
-                            string dominantColor = null;
-                            double maxPercentage = 0;
-
-                            foreach (string colorName in segmentResult.ColorCounts.Keys)
+                            if (percentage > maxPercentage)
                             {
-                                int count = segmentResult.ColorCounts[colorName];
-                                double percentage = (double)count / segmentResult.TotalPixels * 100;
-                                segmentResult.ColorPercentages[colorName] = Math.Round(percentage, 1);
-
-                                if (percentage > maxPercentage && colorName != "Неопределённый")
-                                {
-                                    maxPercentage = percentage;
-                                    dominantColor = colorName;
-                                }
+                                maxPercentage = percentage;
+                                dominantClusterId = clusterId;
                             }
-
-                            segmentResult.DominantColor = dominantColor ?? "Нет данных";
-                            segmentResult.DominantPercentage = maxPercentage;
                         }
 
-                        result.Segments.Add(segmentResult);
+                        segmentResult.DominantClusterId = dominantClusterId;
+                        segmentResult.DominantClusterPercentage = maxPercentage;
+
+                        // Находим доминирующий кластер
+                        var dominantCluster = result.ClusteringResult.Clusters
+                            .FirstOrDefault(c => c.Id == dominantClusterId);
+
+                        if (dominantCluster != null)
+                        {
+                            segmentResult.DominantClusterColorRGB =
+                                $"RGB({dominantCluster.R},{dominantCluster.G},{dominantCluster.B})";
+
+                            var closestColor = ColorRegistry.FindClosestColor(
+                                dominantCluster.R,
+                                dominantCluster.G,
+                                dominantCluster.B);
+                            segmentResult.DominantClusterName = closestColor?.Name ?? "Неизвестный";
+                        }
+                    }
+
+                    result.Segments.Add(segmentResult);
+                }
+            }
+            catch (Exception ex)
+            {
+                result.ErrorMessage = $"Ошибка: {ex.Message}";
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Найти пиксель в кластерах по координатам
+        /// </summary>
+        private PixelCluster FindClusterPixel(List<ClusterData> clusters, int x, int y)
+        {
+            foreach (var cluster in clusters)
+            {
+                foreach (var pixel in cluster.Pixels)
+                {
+                    if (pixel.X == x && pixel.Y == y)
+                    {
+                        return pixel;
                     }
                 }
-                catch (Exception ex)
-                {
-                    result.ErrorMessage = $"Ошибка: {ex.Message}";
-                }
-
-                return result;
             }
+            return null;
         }
     }
 }

@@ -1,8 +1,8 @@
-﻿<Window x:Class="DrawingTestAnalyzer.MainWindow"
+﻿<Window x:Class="KursT1.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Анализ рисуночного теста" 
-        Height="800" Width="1100"
+        Title="Анализ рисуночного теста (K-Modes)" 
+        Height="800" Width="1200"
         WindowStartupLocation="CenterScreen">
 
     <Grid Margin="15">
@@ -82,7 +82,7 @@
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <!-- Таблица результатов -->
-                    <TextBlock Text="РЕЗУЛЬТАТЫ АНАЛИЗА ПО ЗОНАМ" 
+                    <TextBlock Text="📋 Результаты анализа по зонам" 
                                FontSize="16" FontWeight="Bold" 
                                Margin="0,0,0,10"/>
 
@@ -96,28 +96,20 @@
                             <DataGridTextColumn Header="№" Binding="{Binding SegmentId}" Width="40"/>
                             <DataGridTextColumn Header="Зона" Binding="{Binding SegmentName}" Width="130"/>
 
-                            <!-- Доминирующий цвет -->
-                            <DataGridTemplateColumn Header="Доминирующий цвет" Width="140">
+                            <DataGridTemplateColumn Header="Доминирующий кластер" Width="180">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Width="20" Height="20" Margin="0,0,8,0"
-                                                    BorderBrush="Gray" BorderThickness="1">
-                                                <Border.Background>
-                                                    <SolidColorBrush Color="{Binding DominantColorRgb}"/>
-                                                </Border.Background>
-                                            </Border>
+                                        <StackPanel>
                                             <TextBlock Text="{Binding DominantColorWithPercent}" 
-                                                       VerticalAlignment="Center"/>
+                                                       FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding DominantClusterName}" 
+                                                       FontSize="10" Foreground="Gray"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Остальные цвета -->
-                            <DataGridTextColumn Header="Остальные цвета (%)" 
-                                                Binding="{Binding OtherColorsText}" 
-                                                Width="200"/>
+                            <DataGridTextColumn Header="%" Binding="{Binding DominantClusterPercentage, StringFormat=F1}" Width="50"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>

@@ -1,13 +1,11 @@
-﻿using KursT1;
-using Microsoft.Win32;
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
-using static KursT1.SegmentColorResult;
+using Microsoft.Win32;
 
-namespace DrawingTestAnalyzer
+namespace KursT1
 {
     public partial class MainWindow : Window
     {
@@ -21,6 +19,9 @@ namespace DrawingTestAnalyzer
             InitializeComponent();
         }
 
+        /// <summary>
+        /// Загрузить шаблон
+        /// </summary>
         private void LoadTemplate_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFileDialog
@@ -36,15 +37,27 @@ namespace DrawingTestAnalyzer
 
                 if (_templateResult.IsSuccess)
                 {
+                    int zonesAnalyzed = 0;
+                    foreach (var segment in _templateResult.Segments)
+                    {
+                        if (segment.PixelCount > 0)
+                            zonesAnalyzed++;
+                    }
+
                     StatusText.Text = $"✅ ШАБЛОН ЗАГРУЖЕН!\n" +
                                      $"Размер: {_templateResult.Width}x{_templateResult.Height}\n" +
-                                     $"Сегментов: {_templateResult.Segments.Count(s => s.PixelCount > 0)}/12\n" +
+                                     $"Сегментов: {zonesAnalyzed}/12\n" +
                                      $"Границ: {_templateResult.TotalBoundaryPixels} пикселей\n\n" +
                                      $"👉 Теперь загрузите РИСУНОК ПОЛЬЗОВАТЕЛЯ";
                     StatusText.Foreground = System.Windows.Media.Brushes.Green;
 
-                    // Создаём анализатор цветов с этим шаблоном
-                    _colorAnalyzer = new ColorAnalyzer(_templateResult);
+                    // Создаём кластеризатор с K=10
+                    var clusteringAlgorithm = new KModesClustering(
+                        k: 10,
+                        maxIterations: 50,
+                        useRegistrySeeds: true );
+                    // Создаём анализатор с алгоритмом
+                    _colorAnalyzer = new ColorAnalyzer(_templateResult, clusteringAlgorithm);
                 }
                 else
                 {
@@ -56,6 +69,9 @@ namespace DrawingTestAnalyzer
             }
         }
 
+        /// <summary>
+        /// Загрузить рисунок пользователя
+        /// </summary>
         private void LoadDrawing_Click(object sender, RoutedEventArgs e)
         {
             if (_templateResult == null)
@@ -78,11 +94,30 @@ namespace DrawingTestAnalyzer
 
                 if (_drawingResult.IsSuccess)
                 {
+                    // Показываем результаты кластеризации
+                    if (_drawingResult.ClusteringResult != null)
+                    {
+                        var clusters = _drawingResult.ClusteringResult.Clusters;
+
+                        string info = $"📊 K-Modes Кластеризация (K=10):\n\n";
+                        info += $"Кластеров найдено: {clusters.Count}\n";
+                        info += $"Всего пикселей: {_drawingResult.ClusteringResult.TotalPixels}\n";
+                        info += $"Итераций: {_drawingResult.ClusteringResult.Iterations}\n";
+                        info += $"Время: {_drawingResult.ClusteringResult.ExecutionTimeMs} мс\n\n";
+
+                        foreach (var c in clusters)
+                        {
+                            info += $"• Кластер {c.Id}: {c.ColorName}\n";
+                            info += $"  RGB{c.DisplayRGB} — {c.PixelCount} px ({c.Percentage:F1}%)\n\n";
+                        }
+
+                        MessageBox.Show(info, "Результаты кластеризации");
+                    }
+
                     StatusText.Text = $"✅ РИСУНОК ПРОАНАЛИЗИРОВАН!\n" +
                                      $"Проанализировано зон: {_drawingResult.Segments.Count}";
                     StatusText.Foreground = System.Windows.Media.Brushes.Green;
 
-                    // Показываем результаты в таблице
                     ResultsGrid.ItemsSource = _drawingResult.Segments;
                 }
                 else
@@ -94,6 +129,9 @@ namespace DrawingTestAnalyzer
             }
         }
 
+        /// <summary>
+        /// Сохранить отчёт
+        /// </summary>
         private void SaveReport_Click(object sender, RoutedEventArgs e)
         {
             if (_drawingResult == null)
@@ -127,6 +165,9 @@ namespace DrawingTestAnalyzer
             }
         }
 
+        /// <summary>
+        /// Очистить
+        /// </summary>
         private void Clear_Click(object sender, RoutedEventArgs e)
         {
             TemplateImage.Source = null;
@@ -138,22 +179,38 @@ namespace DrawingTestAnalyzer
             _colorAnalyzer = null;
         }
 
+        /// <summary>
+        /// Создать текстовый отчёт
+        /// </summary>
         private string CreateTextReport(DrawingAnalysisResult result)
         {
             var sb = new StringBuilder();
             sb.AppendLine("=== АНАЛИЗ РИСУНОЧНОГО ТЕСТА ===\n");
             sb.AppendLine($"Дата: {DateTime.Now:dd.MM.yyyy HH:mm}\n");
 
-            sb.AppendLine($"{"№",-4} {"Зона",-25} {"Домин. цвет",-20} {"Остальные цвета"}");
-            sb.AppendLine(new string('-', 100));
+            sb.AppendLine("=== КЛАСТЕРИЗАЦИЯ K-MODES ===\n");
+            sb.AppendLine($"Кластеров: {result.ClusteringResult.Clusters.Count}");
+            sb.AppendLine($"Пикселей: {result.ClusteringResult.TotalPixels}");
+            sb.AppendLine($"Итераций: {result.ClusteringResult.Iterations}");
+            sb.AppendLine($"Время: {result.ClusteringResult.ExecutionTimeMs} мс\n");
+
+            sb.AppendLine("Кластеры:\n");
+            foreach (var cluster in result.ClusteringResult.Clusters)
+            {
+                sb.AppendLine($"  Кластер {cluster.Id}: RGB{cluster.DisplayRGB} - " +
+                             $"{cluster.ColorName} - {cluster.PixelCount} пикселей ({cluster.Percentage:F1}%)");
+            }
+
+            sb.AppendLine("\n=== РЕЗУЛЬТАТЫ ПО ЗОНАМ ===\n");
+            sb.AppendLine($"{"№",-4} {"Зона",-25} {"Домин. кластер",-25} {"%"}");
+            sb.AppendLine(new string('-', 80));
 
             foreach (var seg in result.Segments)
             {
-                sb.AppendLine($"{seg.SegmentId,-4} {seg.SegmentName,-25} {seg.DominantColorWithPercent,-20} {seg.OtherColorsText}");
+                sb.AppendLine($"{seg.SegmentId,-4} {seg.SegmentName,-25} {seg.DominantClusterColorRGB,-25} {seg.DominantClusterPercentage:F1}%");
             }
 
             return sb.ToString();
         }
     }
 }
-
