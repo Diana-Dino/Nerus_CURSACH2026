@@ -1,66 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using KursT1.Data;
+using KursT1.Core;
 
-namespace KursT1
+namespace KursT1.Clustering
 {
-    /// <summary>
-    /// Пиксель для кластеризации
-    /// </summary>
-    public class PixelCluster
-    {
-        public int X { get; set; }
-        public int Y { get; set; }
-        public byte R { get; set; }
-        public byte G { get; set; }
-        public byte B { get; set; }
-        public int ClusterId { get; set; } = -1;
-    }
-
-    /// <summary>
-    /// Данные одного кластера
-    /// </summary>
-    public class ClusterData
-    {
-        public int Id { get; set; }
-        public byte R { get; set; }
-        public byte G { get; set; }
-        public byte B { get; set; }
-        public int PixelCount { get; set; }
-        public List<PixelCluster> Pixels { get; set; } = new List<PixelCluster>();
-        public string DisplayRGB => $"({R},{G},{B})";
-        public string ColorName => ColorRegistry.FindClosestColor(R, G, B)?.Name ?? "Неизвестный";
-        public double Percentage { get; set; }
-    }
-
-    /// <summary>
-    /// Результат кластеризации
-    /// </summary>
-    public class ClusteringResult
-    {
-        public List<ClusterData> Clusters { get; set; } = new List<ClusterData>();
-        public int TotalPixels { get; set; }
-        public int Iterations { get; set; }
-        public double ExecutionTimeMs { get; set; }
-        public string ErrorMessage { get; set; }
-        public bool IsSuccess => string.IsNullOrEmpty(ErrorMessage);
-    }
-
-    /// <summary>
-    /// K-Modes алгоритм с инициализацией из реестра цветов
-    /// </summary>
-    public class KModesClustering : IClusteringAlgorithm
+    /// <summary>K-Modes алгоритм с HSV расстоянием</summary>
+    public class KModesClustering
     {
         private readonly int _k;
         private readonly int _maxIterations;
-        private readonly bool _useRegistrySeeds;  // ← НОВОЕ: флаг использования реестра
+        private readonly bool _useRegistrySeeds;
 
-        /// <summary>
-        /// Конструктор кластеризатора
-        /// </summary>
-        /// <param name="k">Количество кластеров</param>
-        /// <param name="maxIterations">Максимум итераций</param>
-        /// <param name="useRegistrySeeds">Использовать цвета из реестра как начальные центры</param>
         public KModesClustering(int k = 10, int maxIterations = 50, bool useRegistrySeeds = true)
         {
             _k = k;
@@ -68,9 +20,6 @@ namespace KursT1
             _useRegistrySeeds = useRegistrySeeds;
         }
 
-        /// <summary>
-        /// Выполнить кластеризацию пикселей изображения
-        /// </summary>
         public ClusteringResult Cluster(byte[] pixels, int width, int height)
         {
             var result = new ClusteringResult();
@@ -78,7 +27,6 @@ namespace KursT1
 
             try
             {
-                // 1. Определение пикселей для работы
                 int stride = width * 3;
                 var pixelList = new List<PixelCluster>();
 
@@ -113,12 +61,10 @@ namespace KursT1
                     return result;
                 }
 
-                // 2. Инициализация мод (центров кластеров)
                 var modes = _useRegistrySeeds
-                    ? InitializeFromRegistry(pixelList)  // ← из реестра
-                    : InitializeRandom(pixelList);        // ← случайно
+                    ? InitializeFromRegistry(pixelList)
+                    : InitializeRandom(pixelList);
 
-                // 3. Итерации кластеризации
                 int iterations = 0;
                 bool changed = true;
 
@@ -127,14 +73,12 @@ namespace KursT1
                     changed = false;
                     iterations++;
 
-                    // 3.1. Очищаем кластеры
                     foreach (var mode in modes)
                     {
                         mode.Pixels.Clear();
                         mode.PixelCount = 0;
                     }
 
-                    // 3.2. Назначаем пиксели ближайшей моде
                     foreach (var pixel in pixelList)
                     {
                         int closestId = 0;
@@ -142,7 +86,7 @@ namespace KursT1
 
                         for (int i = 0; i < modes.Count; i++)
                         {
-                            double distance = CalculateDistance(
+                            double distance = CalculateDistanceHSV(
                                 pixel.R, pixel.G, pixel.B,
                                 modes[i].R, modes[i].G, modes[i].B);
 
@@ -163,7 +107,6 @@ namespace KursT1
                         modes[closestId].PixelCount++;
                     }
 
-                    // 3.3. Обновляем моды (наиболее частый цвет)
                     foreach (var mode in modes)
                     {
                         if (mode.Pixels.Count > 0)
@@ -176,7 +119,6 @@ namespace KursT1
                     }
                 }
 
-                // 4. Сохранение непустых кластеров
                 result.Clusters = new List<ClusterData>();
                 int clusterId = 0;
 
@@ -198,7 +140,6 @@ namespace KursT1
 
                 result.Iterations = iterations;
 
-                // 5. Пересчёт процентов
                 int total = result.TotalPixels;
                 foreach (var cluster in result.Clusters)
                 {
@@ -218,18 +159,14 @@ namespace KursT1
             return result;
         }
 
-        /// <summary>
-        /// Инициализация центров из реестра цветов
-        /// </summary>
         private List<ClusterData> InitializeFromRegistry(List<PixelCluster> pixelList)
         {
             var modes = new List<ClusterData>();
             int id = 0;
 
-            // Берём цвета из реестра как начальные центры
             foreach (var colorInfo in ColorRegistry.Colors)
             {
-                if (id >= _k) break;  // Не больше K кластеров
+                if (id >= _k) break;
 
                 modes.Add(new ClusterData
                 {
@@ -243,7 +180,6 @@ namespace KursT1
                 id++;
             }
 
-            // Если в реестре меньше цветов чем K, добавляем случайные пиксели
             var random = new Random(42);
             var usedIndices = new HashSet<int>();
 
@@ -272,9 +208,6 @@ namespace KursT1
             return modes;
         }
 
-        /// <summary>
-        /// Случайная инициализация центров (оригинальный способ)
-        /// </summary>
         private List<ClusterData> InitializeRandom(List<PixelCluster> pixelList)
         {
             var modes = new List<ClusterData>();
@@ -305,32 +238,32 @@ namespace KursT1
             return modes;
         }
 
-        /// <summary>
-        /// Проверка на фон
-        /// </summary>
         private bool IsBackground(byte r, byte g, byte b)
         {
-            if (r > 245 && g > 245 && b > 245)
-                return true;
-            if (r < 10 && g < 10 && b < 10)
-                return true;
+            if (r > 245 && g > 245 && b > 245) return true;
+            if (r < 10 && g < 10 && b < 10) return true;
             return false;
         }
 
-        /// <summary>
-        /// Расстояние между цветами
-        /// </summary>
-        private double CalculateDistance(byte r1, byte g1, byte b1, byte r2, byte g2, byte b2)
+        private double CalculateDistanceHSV(byte r1, byte g1, byte b1, byte r2, byte g2, byte b2)
         {
-            double dr = r1 - r2;
-            double dg = g1 - g2;
-            double db = b1 - b2;
-            return Math.Sqrt(dr * dr + dg * dg + db * db);
+            var hsv1 = ColorUtils.RgbToHsv(r1, g1, b1);
+            var hsv2 = ColorUtils.RgbToHsv(r2, g2, b2);
+
+            double hDiff = Math.Abs(hsv1.H - hsv2.H);
+            if (hDiff > 180) hDiff = 360 - hDiff;
+            hDiff = hDiff / 180.0;
+
+            double sDiff = Math.Abs(hsv1.S - hsv2.S) / 100.0;
+            double vDiff = Math.Abs(hsv1.V - hsv2.V) / 100.0;
+
+            return Math.Sqrt(
+                2.0 * hDiff * hDiff +
+                1.0 * sDiff * sDiff +
+                1.0 * vDiff * vDiff
+            );
         }
 
-        /// <summary>
-        /// Вычисление новой моды (наиболее частый цвет)
-        /// </summary>
         private ClusterData CalculateNewMode(List<PixelCluster> pixels)
         {
             var colorGroups = new Dictionary<string, List<PixelCluster>>();
@@ -338,7 +271,6 @@ namespace KursT1
             foreach (var pixel in pixels)
             {
                 string key = $"{pixel.R},{pixel.G},{pixel.B}";
-
                 if (!colorGroups.ContainsKey(key))
                 {
                     colorGroups[key] = new List<PixelCluster>();
@@ -363,12 +295,7 @@ namespace KursT1
             byte g = byte.Parse(parts[1]);
             byte b = byte.Parse(parts[2]);
 
-            return new ClusterData
-            {
-                R = r,
-                G = g,
-                B = b
-            };
+            return new ClusterData { R = r, G = g, B = b };
         }
     }
 }
